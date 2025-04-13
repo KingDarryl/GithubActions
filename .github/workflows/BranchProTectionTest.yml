@@ -1,4 +1,4 @@
-name: Branch Protection Checker
+name: Branch Protection Checker Daily
 
 on:
   schedule:
