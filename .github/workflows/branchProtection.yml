@@ -1,0 +1,103 @@
+name: Audit Log Checker
+
+on:
+  schedule:
+    - cron: '0 0 * * *'  # Runs at midnight every day
+  workflow_dispatch:     # Allows manual triggering
+
+permissions: {}  # No default GITHUB_TOKEN permissions needed since we're using PAT
+
+jobs:
+  check-audit-logs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Audit Logs
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.PAT_TOKEN }}  # PAT with read:audit_log permission
+          script: |
+            try {
+              console.log('Starting audit log check...');
+              console.log('Organization:', context.repo.owner);
+              
+              // Get audit logs for branch protection changes using the REST API directly
+              const response = await github.request('GET /orgs/{org}/audit-log', {
+                org: context.repo.owner,
+                phrase: 'action:protected_branch.update_admin_enforced',
+                include: 'all',
+                per_page: 100,
+                headers: {
+                  'X-GitHub-Api-Version': '2022-11-28',
+                  accept: 'application/vnd.github.audit-log.preview+json'
+                }
+              });
+              
+              console.log('Found', response.data.length, 'audit log entries');
+              
+              if (response.data.length > 0) {
+                const events = response.data.map(event => ({
+                  repo: event.repo,
+                  action: event.action,
+                  actor: event.actor,
+                  created_at: event.created_at
+                }));
+
+                const notificationText = `Branch Protection Changes Detected\n\n${events.map(event => 
+                  `Repository: ${event.repo}\nAction: ${event.action}\nChanged by: ${event.actor}\nTime: ${event.created_at}\n`
+                ).join('\n')}`;
+                
+                // Send to Slack
+                await fetch(process.env.SLACK_WEBHOOK_URL, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({
+                    text: "Branch Protection Changes Detected",
+                    blocks: [
+                      {
+                        type: "section",
+                        text: {
+                          type: "mrkdwn",
+                          text: notificationText
+                        }
+                      }
+                    ]
+                  })
+                });
+              } else {
+                console.log('No branch protection changes found in audit logs');
+              }
+              
+            } catch (error) {
+              console.error('Error checking audit logs:', error);
+              console.error('Error details:', {
+                status: error.status,
+                message: error.message,
+                documentation_url: error.documentation_url
+              });
+              
+              // Send error to Slack
+              await fetch(process.env.SLACK_WEBHOOK_URL, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  text: "⚠️ Error Checking Audit Logs",
+                  blocks: [
+                    {
+                      type: "section",
+                      text: {
+                        type: "mrkdwn",
+                        text: `Error checking audit logs:\n\`\`\`\n${error.message}\n\`\`\``
+                      }
+                    }
+                  ]
+                })
+              });
+              
+              throw error;
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }} 
