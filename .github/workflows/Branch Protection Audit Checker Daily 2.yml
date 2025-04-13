@@ -1,4 +1,4 @@
-name: Branch Protection Audit Checker Daily 2
+name: Branch Protection Audit Checker Daily
 
 on:
   schedule:
@@ -17,9 +17,6 @@ jobs:
           # Note: PAT_TOKEN needs only read:audit_log scope to read organization audit logs
           github-token: ${{ secrets.PAT_TOKEN }}
           script: |
-            const { HttpClient } = require('@actions/http-client');
-            const http = new HttpClient('branch-protection-checker');
-            
             try {
               console.log('Starting audit log check...');
               console.log('Repository:', context.repo.owner + '/' + context.repo.repo);
@@ -61,9 +58,13 @@ jobs:
                   `Changes Found:\n${changeDetails}`;
                 
                 // Send to Slack
-                await http.postJson(
-                  process.env.SLACK_WEBHOOK_URL,
-                  {
+                await github.request({
+                  method: 'POST',
+                  url: process.env.SLACK_WEBHOOK_URL,
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  data: {
                     text: "🚨 Branch Protection Changes Alert",
                     blocks: [
                       {
@@ -75,14 +76,18 @@ jobs:
                       }
                     ]
                   }
-                );
+                });
               } else {
                 console.log('No branch protection changes found in the last 24 hours');
                 
                 // Send "all clear" message to Slack
-                await http.postJson(
-                  process.env.SLACK_WEBHOOK_URL,
-                  {
+                await github.request({
+                  method: 'POST',
+                  url: process.env.SLACK_WEBHOOK_URL,
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  data: {
                     text: "✅ Branch Protection Status",
                     blocks: [
                       {
@@ -95,7 +100,7 @@ jobs:
                       }
                     ]
                   }
-                );
+                });
               }
               
             } catch (error) {
@@ -107,9 +112,13 @@ jobs:
               });
               
               // Send error to Slack
-              await http.postJson(
-                process.env.SLACK_WEBHOOK_URL,
-                {
+              await github.request({
+                method: 'POST',
+                url: process.env.SLACK_WEBHOOK_URL,
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                data: {
                   text: "⚠️ Error Checking Branch Protection Audit Log",
                   blocks: [
                     {
@@ -121,7 +130,7 @@ jobs:
                     }
                   ]
                 }
-              );
+              });
               
               throw error;
             }
