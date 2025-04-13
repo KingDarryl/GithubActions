@@ -14,7 +14,7 @@ jobs:
       - name: Check Audit Log for Branch Protection Changes
         uses: actions/github-script@v6
         with:
-          # Note: PAT_TOKEN needs only read:audit_log scope to read organization audit logs
+          # Note: PAT_TOKEN needs read:audit_log scope to read organization audit logs
           github-token: ${{ secrets.PAT_TOKEN }}
           script: |
             try {
@@ -29,27 +29,50 @@ jobs:
               const fromDate = yesterday.toISOString().split('T')[0];
               const toDate = now.toISOString().split('T')[0];
               
-              // Query the audit log for protected_branch.update_admin_enforced events
+              // Query the audit log for any branch protection changes
               const response = await github.request('GET /orgs/{org}/audit-log', {
                 org: context.repo.owner,
-                phrase: `action:protected_branch.update_admin_enforced repo:${context.repo.repo} created:${fromDate}..${toDate}`,
+                phrase: `repo:${context.repo.repo} created:${fromDate}..${toDate}`,
+                include: ['all'],
                 headers: {
-                  'X-GitHub-Api-Version': '2022-11-28'
+                  'X-GitHub-Api-Version': '2022-11-28',
+                  'Accept': 'application/vnd.github.v3+json'
                 }
               });
               
               const events = response.data;
               console.log('Audit log response:', JSON.stringify(events, null, 2));
               
-              if (events && events.length > 0) {
+              // Filter for branch protection related events
+              const branchProtectionEvents = events.filter(event => 
+                event.action.includes('protected_branch') || 
+                event.action.includes('branch_protection')
+              );
+              
+              if (branchProtectionEvents.length > 0) {
                 console.log('Found branch protection changes in audit log');
                 
                 // Create a detailed message about the changes
-                const changeDetails = events.map(event => {
-                  return `• Time: ${new Date(event.created_at).toISOString()}\n` +
-                         `  Actor: ${event.actor}\n` +
-                         `  Action: ${event.action}\n` +
-                         `  Branch: ${event.data.protected_branch_name}`;
+                const changeDetails = branchProtectionEvents.map(event => {
+                  const time = new Date(event.created_at).toISOString();
+                  const actor = event.actor;
+                  const action = event.action;
+                  const branch = event.data?.protected_branch_name || 'unknown';
+                  const changes = event.data?.changes || {};
+                  
+                  let changeDetails = `• Time: ${time}\n` +
+                                    `  Actor: ${actor}\n` +
+                                    `  Action: ${action}\n` +
+                                    `  Branch: ${branch}`;
+                  
+                  if (Object.keys(changes).length > 0) {
+                    changeDetails += `\n  Changes:\n` +
+                                   Object.entries(changes).map(([key, value]) => 
+                                     `    - ${key}: ${JSON.stringify(value)}`
+                                   ).join('\n');
+                  }
+                  
+                  return changeDetails;
                 }).join('\n\n');
                 
                 const notificationText = `🚨 Branch Protection Changes Detected!\n\n` +
