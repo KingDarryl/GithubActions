@@ -21,7 +21,8 @@ jobs:
           echo "Event name: ${{ github.event_name }}"
           echo "Event action: ${{ github.event.action }}"
           echo "Repository: ${{ github.repository }}"
-          echo "Payload: ${{ toJson(github.event) }}"
+          echo "Full payload:"
+          echo "${{ toJson(github.event) }}" | jq .
           
       - name: Send Slack Notification
         uses: actions/github-script@v6
@@ -29,7 +30,9 @@ jobs:
           script: |
             try {
               console.log('Starting Slack notification...');
-              console.log('Event payload:', JSON.stringify(context.payload, null, 2));
+              console.log('Event name:', context.eventName);
+              console.log('Event action:', context.payload.action);
+              console.log('Full event payload:', JSON.stringify(context.payload, null, 2));
               
               // Get the event details
               const event = context.payload;
@@ -79,9 +82,14 @@ jobs:
               
               // Handle branch protection rule changes
               if (context.eventName === 'branch_protection_rule') {
+                console.log('Processing branch protection rule event');
+                console.log('Rule data:', JSON.stringify(event.rule, null, 2));
+                console.log('Changes data:', JSON.stringify(event.changes, null, 2));
+                
                 const rule = event.rule;
                 const repository = event.repository;
                 const sender = event.sender;
+                const changes = event.changes || {};
                 
                 const message = {
                   blocks: [
@@ -122,16 +130,18 @@ jobs:
                 };
 
                 // Add changes section if it's an update
-                if (event.action === 'updated' && rule.changes) {
-                  const changes = Object.entries(rule.changes).map(([key, value]) => 
-                    `• ${key}: ${JSON.stringify(value)}`
-                  ).join('\n');
+                if (event.action === 'updated' && Object.keys(changes).length > 0) {
+                  const changesText = Object.entries(changes).map(([key, value]) => {
+                    const fromValue = value.from !== undefined ? ` from ${JSON.stringify(value.from)}` : '';
+                    const toValue = value.to !== undefined ? ` to ${JSON.stringify(value.to)}` : '';
+                    return `• ${key} changed${fromValue}${toValue}`;
+                  }).join('\n');
                   
                   message.blocks.push({
                     type: "section",
                     text: {
                       type: "mrkdwn",
-                      text: `*Changes:*\n\`\`\`\n${changes}\n\`\`\``
+                      text: `*Changes:*\n\`\`\`\n${changesText}\n\`\`\``
                     }
                   });
                 }
