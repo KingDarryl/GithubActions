@@ -1,9 +1,16 @@
 name: Branch Protection Slack Notifier
 
 on:
+  push:
+    branches:
+      - main  # or whatever your protected branch is
   branch_protection_rule:
     types: [created, deleted, updated]
-  workflow_dispatch:  # Add manual trigger for testing
+  workflow_dispatch:  # Keep manual trigger for testing
+
+permissions:
+  contents: read
+  pull-requests: read
 
 jobs:
   notify-slack:
@@ -70,14 +77,94 @@ jobs:
                 return;
               }
               
-              // Handle branch protection events
-              const rule = event.rule;
+              // Handle branch protection rule changes
+              if (context.eventName === 'branch_protection_rule') {
+                const rule = event.rule;
+                const repository = event.repository;
+                const sender = event.sender;
+                
+                const message = {
+                  blocks: [
+                    {
+                      type: "header",
+                      text: {
+                        type: "plain_text",
+                        text: `🚨 Branch Protection Rule ${event.action.toUpperCase()}`
+                      }
+                    },
+                    {
+                      type: "section",
+                      fields: [
+                        {
+                          type: "mrkdwn",
+                          text: `*Repository:*\n${repository.full_name}`
+                        },
+                        {
+                          type: "mrkdwn",
+                          text: `*Changed by:*\n${sender.login}`
+                        }
+                      ]
+                    },
+                    {
+                      type: "section",
+                      fields: [
+                        {
+                          type: "mrkdwn",
+                          text: `*Branch Pattern:*\n${rule.pattern}`
+                        },
+                        {
+                          type: "mrkdwn",
+                          text: `*Rule Type:*\n${rule.type}`
+                        }
+                      ]
+                    }
+                  ]
+                };
+
+                // Add changes section if it's an update
+                if (event.action === 'updated' && rule.changes) {
+                  const changes = Object.entries(rule.changes).map(([key, value]) => 
+                    `• ${key}: ${JSON.stringify(value)}`
+                  ).join('\n');
+                  
+                  message.blocks.push({
+                    type: "section",
+                    text: {
+                      type: "mrkdwn",
+                      text: `*Changes:*\n\`\`\`\n${changes}\n\`\`\``
+                    }
+                  });
+                }
+
+                // Add timestamp
+                message.blocks.push({
+                  type: "context",
+                  elements: [
+                    {
+                      type: "mrkdwn",
+                      text: `Time: ${new Date().toISOString()}`
+                    }
+                  ]
+                });
+
+                console.log('Sending branch protection rule change message to Slack:', JSON.stringify(message, null, 2));
+                await github.request({
+                  method: 'POST',
+                  url: process.env.SLACK_WEBHOOK_URL,
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  data: message
+                });
+                console.log('Branch protection rule change notification sent successfully');
+                return;
+              }
+              
+              // Handle push events
               const repository = event.repository;
               const sender = event.sender;
-              
-              console.log('Rule details:', JSON.stringify(rule, null, 2));
-              console.log('Repository details:', JSON.stringify(repository, null, 2));
-              console.log('Sender details:', JSON.stringify(sender, null, 2));
+              const ref = event.ref;
+              const commits = event.commits;
               
               // Format the message for Slack
               const message = {
@@ -86,7 +173,7 @@ jobs:
                     type: "header",
                     text: {
                       type: "plain_text",
-                      text: `🚨 Branch Protection Rule ${event.action.toUpperCase()}`
+                      text: "🚨 Push to Protected Branch"
                     }
                   },
                   {
@@ -98,7 +185,7 @@ jobs:
                       },
                       {
                         type: "mrkdwn",
-                        text: `*Changed by:*\n${sender.login}`
+                        text: `*Branch:*\n${ref}`
                       }
                     ]
                   },
@@ -107,31 +194,16 @@ jobs:
                     fields: [
                       {
                         type: "mrkdwn",
-                        text: `*Branch Pattern:*\n${rule.pattern}`
+                        text: `*Pushed by:*\n${sender.login}`
                       },
                       {
                         type: "mrkdwn",
-                        text: `*Rule Type:*\n${rule.type}`
+                        text: `*Commits:*\n${commits.length}`
                       }
                     ]
                   }
                 ]
               };
-
-              // Add changes section if it's an update
-              if (event.action === 'updated' && rule.changes) {
-                const changes = Object.entries(rule.changes).map(([key, value]) => 
-                  `• ${key}: ${JSON.stringify(value)}`
-                ).join('\n');
-                
-                message.blocks.push({
-                  type: "section",
-                  text: {
-                    type: "mrkdwn",
-                    text: `*Changes:*\n\`\`\`\n${changes}\n\`\`\``
-                  }
-                });
-              }
 
               // Add timestamp
               message.blocks.push({
@@ -144,7 +216,7 @@ jobs:
                 ]
               });
 
-              console.log('Sending message to Slack:', JSON.stringify(message, null, 2));
+              console.log('Sending push notification to Slack:', JSON.stringify(message, null, 2));
               
               // Send to Slack
               await github.request({
@@ -156,7 +228,7 @@ jobs:
                 data: message
               });
               
-              console.log('Slack notification sent successfully');
+              console.log('Push notification sent successfully');
               
             } catch (error) {
               console.error('Error sending Slack notification:', error);
