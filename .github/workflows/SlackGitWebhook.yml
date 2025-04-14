@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main  # or whatever your protected branch is
-  repository:
+  repository_dispatch:
     types: [edited]
   workflow_dispatch:  # Keep manual trigger for testing
 
