@@ -1,0 +1,104 @@
+name: Branch Protection Slack Notifier
+
+on:
+ branch_protection_rule:
+    types: [created, deleted, updated]
+
+jobs:
+  notify-slack:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Slack Notification
+        uses: actions/github-script@v6
+        with:
+          script: |
+            try {
+              // Get the event details
+              const event = context.payload;
+              const rule = event.rule;
+              const repository = event.repository;
+              const sender = event.sender;
+              
+              // Format the message for Slack
+              const message = {
+                blocks: [
+                  {
+                    type: "header",
+                    text: {
+                      type: "plain_text",
+                      text: `🚨 Branch Protection Rule ${event.action.toUpperCase()}`
+                    }
+                  },
+                  {
+                    type: "section",
+                    fields: [
+                      {
+                        type: "mrkdwn",
+                        text: `*Repository:*\n${repository.full_name}`
+                      },
+                      {
+                        type: "mrkdwn",
+                        text: `*Changed by:*\n${sender.login}`
+                      }
+                    ]
+                  },
+                  {
+                    type: "section",
+                    fields: [
+                      {
+                        type: "mrkdwn",
+                        text: `*Branch Pattern:*\n${rule.pattern}`
+                      },
+                      {
+                        type: "mrkdwn",
+                        text: `*Rule Type:*\n${rule.type}`
+                      }
+                    ]
+                  }
+                ]
+              };
+
+              // Add changes section if it's an update
+              if (event.action === 'updated' && rule.changes) {
+                const changes = Object.entries(rule.changes).map(([key, value]) => 
+                  `• ${key}: ${JSON.stringify(value)}`
+                ).join('\n');
+                
+                message.blocks.push({
+                  type: "section",
+                  text: {
+                    type: "mrkdwn",
+                    text: `*Changes:*\n\`\`\`\n${changes}\n\`\`\``
+                  }
+                });
+              }
+
+              // Add timestamp
+              message.blocks.push({
+                type: "context",
+                elements: [
+                  {
+                    type: "mrkdwn",
+                    text: `Time: ${new Date().toISOString()}`
+                  }
+                ]
+              });
+
+              // Send to Slack
+              await github.request({
+                method: 'POST',
+                url: process.env.SLACK_WEBHOOK_URL,
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                data: message
+              });
+              
+              console.log('Slack notification sent successfully');
+              
+            } catch (error) {
+              console.error('Error sending Slack notification:', error);
+              throw error;
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }} 
