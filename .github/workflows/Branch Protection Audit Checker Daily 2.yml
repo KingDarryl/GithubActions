@@ -27,43 +27,33 @@ jobs:
               const yesterday = new Date(now.getTime() - (24 * 60 * 60 * 1000));
               
               // Format dates for the query
-              const fromDate = yesterday.toISOString();
-              const toDate = now.toISOString();
+              const fromDate = yesterday.toISOString().split('T')[0];
+              const toDate = now.toISOString().split('T')[0];
               
               console.log('Querying audit log from', fromDate, 'to', toDate);
               
-              // Query the audit log using GraphQL
-              const query = `
-                query($org: String!, $from: DateTime!, $to: DateTime!) {
-                  organization(login: $org) {
-                    auditLog(first: 100, query: "created:${fromDate}..${toDate}") {
-                      nodes {
-                        ... on AuditEntry {
-                          action
-                          actor {
-                            login
-                          }
-                          createdAt
-                          repository {
-                            name
-                          }
-                          data
-                        }
-                      }
-                    }
-                  }
-                }
-              `;
-              
-              const response = await github.graphql(query, {
+              // First, verify we can access the organization
+              const orgResponse = await github.request('GET /orgs/{org}', {
                 org: context.repo.owner,
-                from: fromDate,
-                to: toDate
+                headers: {
+                  'X-GitHub-Api-Version': '2022-11-28'
+                }
+              });
+              console.log('Organization details:', JSON.stringify(orgResponse.data, null, 2));
+              
+              // Query the audit log for any branch protection changes
+              const response = await github.request('GET /orgs/{org}/audit-log', {
+                org: context.repo.owner,
+                phrase: `repo:${context.repo.repo} action:protected_branch created:${fromDate}..${toDate}`,
+                include: 'all',
+                headers: {
+                  'X-GitHub-Api-Version': '2022-11-28',
+                  'Accept': 'application/vnd.github.v3+json'
+                }
               });
               
-              console.log('GraphQL response:', JSON.stringify(response, null, 2));
-              
-              const events = response.organization.auditLog.nodes;
+              const events = response.data;
+              console.log('Audit log response:', JSON.stringify(events, null, 2));
               
               // Filter for branch protection related events
               const branchProtectionEvents = events.filter(event => 
@@ -76,18 +66,20 @@ jobs:
                 
                 // Create a detailed message about the changes
                 const changeDetails = branchProtectionEvents.map(event => {
-                  const time = new Date(event.createdAt).toISOString();
-                  const actor = event.actor?.login || 'unknown';
+                  const time = new Date(event.created_at).toISOString();
+                  const actor = event.actor;
                   const action = event.action;
-                  const data = event.data || {};
+                  const branch = event.data?.protected_branch_name || 'unknown';
+                  const changes = event.data?.changes || {};
                   
                   let changeDetails = `• Time: ${time}\n` +
                                     `  Actor: ${actor}\n` +
-                                    `  Action: ${action}`;
+                                    `  Action: ${action}\n` +
+                                    `  Branch: ${branch}`;
                   
-                  if (Object.keys(data).length > 0) {
+                  if (Object.keys(changes).length > 0) {
                     changeDetails += `\n  Changes:\n` +
-                                   Object.entries(data).map(([key, value]) => 
+                                   Object.entries(changes).map(([key, value]) => 
                                      `    - ${key}: ${JSON.stringify(value)}`
                                    ).join('\n');
                   }
