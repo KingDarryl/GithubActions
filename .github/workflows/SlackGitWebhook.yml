@@ -1,23 +1,38 @@
-name: Branch Protection Slack Notifier 2
+name: Branch Protection Slack Notifier
 
 on:
- branch_protection_rule:
+  branch_protection_rule:
     types: [created, deleted, updated]
+  workflow_dispatch:  # Add manual trigger for testing
 
 jobs:
   notify-slack:
     runs-on: ubuntu-latest
     steps:
+      - name: Debug Event
+        run: |
+          echo "Event name: ${{ github.event_name }}"
+          echo "Event action: ${{ github.event.action }}"
+          echo "Repository: ${{ github.repository }}"
+          echo "Payload: ${{ toJson(github.event) }}"
+          
       - name: Send Slack Notification
         uses: actions/github-script@v6
         with:
           script: |
             try {
+              console.log('Starting Slack notification...');
+              console.log('Event payload:', JSON.stringify(context.payload, null, 2));
+              
               // Get the event details
               const event = context.payload;
               const rule = event.rule;
               const repository = event.repository;
               const sender = event.sender;
+              
+              console.log('Rule details:', JSON.stringify(rule, null, 2));
+              console.log('Repository details:', JSON.stringify(repository, null, 2));
+              console.log('Sender details:', JSON.stringify(sender, null, 2));
               
               // Format the message for Slack
               const message = {
@@ -84,6 +99,8 @@ jobs:
                 ]
               });
 
+              console.log('Sending message to Slack:', JSON.stringify(message, null, 2));
+              
               // Send to Slack
               await github.request({
                 method: 'POST',
@@ -98,6 +115,11 @@ jobs:
               
             } catch (error) {
               console.error('Error sending Slack notification:', error);
+              console.error('Error details:', {
+                status: error.status,
+                message: error.message,
+                documentation_url: error.documentation_url
+              });
               throw error;
             }
         env:
