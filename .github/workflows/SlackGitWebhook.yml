@@ -26,6 +26,51 @@ jobs:
               
               // Get the event details
               const event = context.payload;
+              
+              // Handle manual trigger
+              if (context.eventName === 'workflow_dispatch') {
+                const message = {
+                  blocks: [
+                    {
+                      type: "header",
+                      text: {
+                        type: "plain_text",
+                        text: "🔍 Branch Protection Test Notification"
+                      }
+                    },
+                    {
+                      type: "section",
+                      text: {
+                        type: "mrkdwn",
+                        text: "This is a test notification from the Branch Protection Slack Notifier workflow."
+                      }
+                    },
+                    {
+                      type: "context",
+                      elements: [
+                        {
+                          type: "mrkdwn",
+                          text: `Time: ${new Date().toISOString()}`
+                        }
+                      ]
+                    }
+                  ]
+                };
+                
+                console.log('Sending test message to Slack:', JSON.stringify(message, null, 2));
+                await github.request({
+                  method: 'POST',
+                  url: process.env.SLACK_WEBHOOK_URL,
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  data: message
+                });
+                console.log('Test notification sent successfully');
+                return;
+              }
+              
+              // Handle branch protection events
               const rule = event.rule;
               const repository = event.repository;
               const sender = event.sender;
