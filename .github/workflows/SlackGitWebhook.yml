@@ -2,7 +2,7 @@ name: Branch Protection Slack Notifier
 
 on:
   branch_protection_rule:
-    types: [created, deleted]
+    types: [created, deleted, edited]
   workflow_dispatch:  # Keep manual trigger for testing
 
 permissions:
