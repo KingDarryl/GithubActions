@@ -1,8 +1,8 @@
 name: Branch Protection Slack Notifier
 
 on:
-  branch_protection_rule:
-    types: [created, deleted, updated]
+  repository:
+    types: [edited]
   workflow_dispatch:  # Keep manual trigger for testing
 
 permissions:
@@ -77,57 +77,43 @@ jobs:
                 return;
               }
               
-              // Handle branch protection rule changes
-              if (context.eventName === 'branch_protection_rule') {
-                console.log('Processing branch protection rule event');
-                console.log('Rule data:', JSON.stringify(event.rule, null, 2));
-                console.log('Changes data:', JSON.stringify(event.changes, null, 2));
+              // Handle repository edits
+              if (context.eventName === 'repository' && event.action === 'edited') {
+                console.log('Processing repository edit event');
+                console.log('Changes:', JSON.stringify(event.changes, null, 2));
                 
-                const rule = event.rule;
-                const repository = event.repository;
-                const sender = event.sender;
-                const changes = event.changes || {};
-                
-                const message = {
-                  blocks: [
-                    {
-                      type: "header",
-                      text: {
-                        type: "plain_text",
-                        text: `🚨 Branch Protection Rule ${event.action.toUpperCase()}`
+                // Check if branch protection settings were changed
+                if (event.changes && event.changes.default_branch_protection) {
+                  const repository = event.repository;
+                  const sender = event.sender;
+                  const changes = event.changes.default_branch_protection;
+                  
+                  const message = {
+                    blocks: [
+                      {
+                        type: "header",
+                        text: {
+                          type: "plain_text",
+                          text: "🚨 Branch Protection Rules Updated"
+                        }
+                      },
+                      {
+                        type: "section",
+                        fields: [
+                          {
+                            type: "mrkdwn",
+                            text: `*Repository:*\n${repository.full_name}`
+                          },
+                          {
+                            type: "mrkdwn",
+                            text: `*Changed by:*\n${sender.login}`
+                          }
+                        ]
                       }
-                    },
-                    {
-                      type: "section",
-                      fields: [
-                        {
-                          type: "mrkdwn",
-                          text: `*Repository:*\n${repository.full_name}`
-                        },
-                        {
-                          type: "mrkdwn",
-                          text: `*Changed by:*\n${sender.login}`
-                        }
-                      ]
-                    },
-                    {
-                      type: "section",
-                      fields: [
-                        {
-                          type: "mrkdwn",
-                          text: `*Branch Pattern:*\n${rule.pattern}`
-                        },
-                        {
-                          type: "mrkdwn",
-                          text: `*Rule Type:*\n${rule.type}`
-                        }
-                      ]
-                    }
-                  ]
-                };
+                    ]
+                  };
 
-                // Add changes section if it's an update
-                if (event.action === 'updated' && Object.keys(changes).length > 0) {
+                  // Add changes section
                   const changesText = Object.entries(changes).map(([key, value]) => {
                     const fromValue = value.from !== undefined ? ` from ${JSON.stringify(value.from)}` : '';
                     const toValue = value.to !== undefined ? ` to ${JSON.stringify(value.to)}` : '';
@@ -141,29 +127,31 @@ jobs:
                       text: `*Changes:*\n\`\`\`\n${changesText}\n\`\`\``
                     }
                   });
+
+                  // Add timestamp
+                  message.blocks.push({
+                    type: "context",
+                    elements: [
+                      {
+                        type: "mrkdwn",
+                        text: `Time: ${new Date().toISOString()}`
+                      }
+                    ]
+                  });
+
+                  console.log('Sending branch protection change message to Slack:', JSON.stringify(message, null, 2));
+                  await github.request({
+                    method: 'POST',
+                    url: process.env.SLACK_WEBHOOK_URL,
+                    headers: {
+                      'Content-Type': 'application/json',
+                    },
+                    data: message
+                  });
+                  console.log('Branch protection change notification sent successfully');
+                } else {
+                  console.log('No branch protection changes detected in repository edit');
                 }
-
-                // Add timestamp
-                message.blocks.push({
-                  type: "context",
-                  elements: [
-                    {
-                      type: "mrkdwn",
-                      text: `Time: ${new Date().toISOString()}`
-                    }
-                  ]
-                });
-
-                console.log('Sending branch protection rule change message to Slack:', JSON.stringify(message, null, 2));
-                await github.request({
-                  method: 'POST',
-                  url: process.env.SLACK_WEBHOOK_URL,
-                  headers: {
-                    'Content-Type': 'application/json',
-                  },
-                  data: message
-                });
-                console.log('Branch protection rule change notification sent successfully');
                 return;
               }
               
