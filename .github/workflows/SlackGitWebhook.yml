@@ -77,17 +77,15 @@ jobs:
                 return;
               }
               
-              // Handle protected branch changes
-              if (context.eventName === 'protected_branch') {
-                console.log('Processing protected branch event');
+              // Handle branch protection rule changes
+              if (context.eventName === 'branch_protection_rule') {
+                console.log('Processing branch protection rule event');
                 console.log('Action:', event.action);
-                console.log('Branch:', event.branch);
-                console.log('Changes:', JSON.stringify(event.changes, null, 2));
+                console.log('Rule:', JSON.stringify(event.rule, null, 2));
                 
+                const rule = event.rule;
                 const repository = event.repository;
                 const sender = event.sender;
-                const branch = event.branch;
-                const changes = event.changes || {};
                 
                 const message = {
                   blocks: [
@@ -95,7 +93,7 @@ jobs:
                       type: "header",
                       text: {
                         type: "plain_text",
-                        text: `🚨 Branch Protection ${event.action.toUpperCase()}`
+                        text: `🚨 Branch Protection Rule ${event.action.toUpperCase()}`
                       }
                     },
                     {
@@ -116,7 +114,7 @@ jobs:
                       fields: [
                         {
                           type: "mrkdwn",
-                          text: `*Branch:*\n${branch}`
+                          text: `*Branch Pattern:*\n${rule.pattern}`
                         },
                         {
                           type: "mrkdwn",
@@ -126,23 +124,6 @@ jobs:
                     }
                   ]
                 };
-
-                // Add changes section if there are changes
-                if (Object.keys(changes).length > 0) {
-                  const changesText = Object.entries(changes).map(([key, value]) => {
-                    const fromValue = value.from !== undefined ? ` from ${JSON.stringify(value.from)}` : '';
-                    const toValue = value.to !== undefined ? ` to ${JSON.stringify(value.to)}` : '';
-                    return `• ${key} changed${fromValue}${toValue}`;
-                  }).join('\n');
-                  
-                  message.blocks.push({
-                    type: "section",
-                    text: {
-                      type: "mrkdwn",
-                      text: `*Changes:*\n\`\`\`\n${changesText}\n\`\`\``
-                    }
-                  });
-                }
 
                 // Add timestamp
                 message.blocks.push({
