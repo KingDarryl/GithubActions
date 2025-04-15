@@ -1,8 +1,8 @@
 name: Branch Protection Slack Notifier
 
 on:
-  repository:
-    types: [edited]
+  branch_protection_rule:
+    types: [created, deleted, edited]
   workflow_dispatch:  # Keep manual trigger for testing
 
 permissions:
@@ -77,43 +77,58 @@ jobs:
                 return;
               }
               
-              // Handle repository edits
-              if (context.eventName === 'repository' && event.action === 'edited') {
-                console.log('Processing repository edit event');
+              // Handle protected branch changes
+              if (context.eventName === 'protected_branch') {
+                console.log('Processing protected branch event');
+                console.log('Action:', event.action);
+                console.log('Branch:', event.branch);
                 console.log('Changes:', JSON.stringify(event.changes, null, 2));
                 
-                // Check if branch protection settings were changed
-                if (event.changes && event.changes.default_branch_protection) {
-                  const repository = event.repository;
-                  const sender = event.sender;
-                  const changes = event.changes.default_branch_protection;
-                  
-                  const message = {
-                    blocks: [
-                      {
-                        type: "header",
-                        text: {
-                          type: "plain_text",
-                          text: "🚨 Branch Protection Rules Updated"
-                        }
-                      },
-                      {
-                        type: "section",
-                        fields: [
-                          {
-                            type: "mrkdwn",
-                            text: `*Repository:*\n${repository.full_name}`
-                          },
-                          {
-                            type: "mrkdwn",
-                            text: `*Changed by:*\n${sender.login}`
-                          }
-                        ]
+                const repository = event.repository;
+                const sender = event.sender;
+                const branch = event.branch;
+                const changes = event.changes || {};
+                
+                const message = {
+                  blocks: [
+                    {
+                      type: "header",
+                      text: {
+                        type: "plain_text",
+                        text: `🚨 Branch Protection ${event.action.toUpperCase()}`
                       }
-                    ]
-                  };
+                    },
+                    {
+                      type: "section",
+                      fields: [
+                        {
+                          type: "mrkdwn",
+                          text: `*Repository:*\n${repository.full_name}`
+                        },
+                        {
+                          type: "mrkdwn",
+                          text: `*Changed by:*\n${sender.login}`
+                        }
+                      ]
+                    },
+                    {
+                      type: "section",
+                      fields: [
+                        {
+                          type: "mrkdwn",
+                          text: `*Branch:*\n${branch}`
+                        },
+                        {
+                          type: "mrkdwn",
+                          text: `*Action:*\n${event.action}`
+                        }
+                      ]
+                    }
+                  ]
+                };
 
-                  // Add changes section
+                // Add changes section if there are changes
+                if (Object.keys(changes).length > 0) {
                   const changesText = Object.entries(changes).map(([key, value]) => {
                     const fromValue = value.from !== undefined ? ` from ${JSON.stringify(value.from)}` : '';
                     const toValue = value.to !== undefined ? ` to ${JSON.stringify(value.to)}` : '';
@@ -127,31 +142,29 @@ jobs:
                       text: `*Changes:*\n\`\`\`\n${changesText}\n\`\`\``
                     }
                   });
-
-                  // Add timestamp
-                  message.blocks.push({
-                    type: "context",
-                    elements: [
-                      {
-                        type: "mrkdwn",
-                        text: `Time: ${new Date().toISOString()}`
-                      }
-                    ]
-                  });
-
-                  console.log('Sending branch protection change message to Slack:', JSON.stringify(message, null, 2));
-                  await github.request({
-                    method: 'POST',
-                    url: process.env.SLACK_WEBHOOK_URL,
-                    headers: {
-                      'Content-Type': 'application/json',
-                    },
-                    data: message
-                  });
-                  console.log('Branch protection change notification sent successfully');
-                } else {
-                  console.log('No branch protection changes detected in repository edit');
                 }
+
+                // Add timestamp
+                message.blocks.push({
+                  type: "context",
+                  elements: [
+                    {
+                      type: "mrkdwn",
+                      text: `Time: ${new Date().toISOString()}`
+                    }
+                  ]
+                });
+
+                console.log('Sending branch protection change message to Slack:', JSON.stringify(message, null, 2));
+                await github.request({
+                  method: 'POST',
+                  url: process.env.SLACK_WEBHOOK_URL,
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  data: message
+                });
+                console.log('Branch protection change notification sent successfully');
                 return;
               }
               
