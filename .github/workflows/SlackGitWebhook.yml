@@ -2,7 +2,7 @@ name: Branch Protection Slack Notifier
 
 on:
   branch_protection_rule:
-    types: [created, deleted, edited]
+    types: [created, deleted]
   workflow_dispatch:  # Keep manual trigger for testing
 
 permissions:
@@ -88,41 +88,88 @@ jobs:
                 const sender = event.sender;
                 
                 const message = {
-                  blocks: [
-                    {
-                      type: "header",
-                      text: {
-                        type: "plain_text",
-                        text: `🚨 Branch Protection Rule ${event.action.toUpperCase()}`
+                  blocks: |
+                    [
+                      {
+                        "type": "header",
+                        "text": {
+                          "type": "plain_text",
+                          "text": "Branch Protection Rule Change Detected"
+                        }
+                      },
+                      {
+                        "type": "section",
+                        "fields": [
+                          {
+                            "type": "mrkdwn",
+                            "text": "*Repository:*\n${{ github.event.repository.full_name }}"
+                          },
+                          {
+                            "type": "mrkdwn",
+                            "text": "*Repository URL:*\n${{ github.event.repository.html_url }}"
+                          },
+                          {
+                            "type": "mrkdwn",
+                            "text": "*Repository Name:*\n${{ github.event.repository.name }}"
+                          },
+                          {
+                            "type": "mrkdwn",
+                            "text": "*Repository Owner:*\n${{ github.event.repository.owner.login }}"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "section",
+                        "fields": [
+                          {
+                            "type": "mrkdwn",
+                            "text": "*Changed by:*\n${{ github.event.sender.login }}"
+                          },
+                          {
+                            "type": "mrkdwn",
+                            "text": "*User Profile:*\n${{ github.event.sender.html_url }}"
+                          },
+                          {
+                            "type": "mrkdwn",
+                            "text": "*User Avatar:*\n${{ github.event.sender.avatar_url }}"
+                          },
+                          {
+                            "type": "mrkdwn",
+                            "text": "*Installation ID:*\n${{ github.event.installation.id }}"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "section",
+                        "fields": [
+                          {
+                            "type": "mrkdwn",
+                            "text": "*Branch Pattern:*\n${{ github.event.rule.pattern }}"
+                          },
+                          {
+                            "type": "mrkdwn",
+                            "text": "*Rule Type:*\n${{ github.event.rule.type }}"
+                          },
+                          {
+                            "type": "mrkdwn",
+                            "text": "*Rule ID:*\n${{ github.event.rule.id }}"
+                          },
+                          {
+                            "type": "mrkdwn",
+                            "text": "*Action:*\n${{ github.event.action }}"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "context",
+                        "elements": [
+                          {
+                            "type": "mrkdwn",
+                            "text": "Event triggered at: ${{ github.event.created_at }}"
+                          }
+                        ]
                       }
-                    },
-                    {
-                      type: "section",
-                      fields: [
-                        {
-                          type: "mrkdwn",
-                          text: `*Repository:*\n${repository.full_name}`
-                        },
-                        {
-                          type: "mrkdwn",
-                          text: `*Changed by:*\n${sender.login}`
-                        }
-                      ]
-                    },
-                    {
-                      type: "section",
-                      fields: [
-                        {
-                          type: "mrkdwn",
-                          text: `*Branch Pattern:*\n${rule.pattern}`
-                        },
-                        {
-                          type: "mrkdwn",
-                          text: `*Action:*\n${event.action}`
-                        }
-                      ]
-                    }
-                  ]
+                    ]
                 };
 
                 // Add timestamp
