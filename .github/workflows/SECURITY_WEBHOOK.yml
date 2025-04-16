@@ -1,0 +1,160 @@
+name: Branch Protection Slack Notifier
+
+on:
+  branch_protection_rule:
+    types: [created, deleted, edited]
+  workflow_dispatch:  # Keep manual trigger for testing
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  notify-slack:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Debug Event
+        run: |
+          echo "Event name: ${{ github.event_name }}"
+          echo "Event action: ${{ github.event.action }}"
+          echo "Repository: ${{ github.repository }}"
+          echo "Full payload:"
+          echo "${{ toJson(github.event) }}"
+          
+      - name: Send Slack Notification
+        uses: actions/github-script@v6
+        with:
+          script: |
+            try {
+              console.log('Starting Slack notification...');
+              console.log('Event name:', context.eventName);
+              console.log('Event action:', context.payload.action);
+              console.log('Full event payload:', JSON.stringify(context.payload, null, 2));
+              
+              // Get the event details
+              const event = context.payload;
+              
+              // Handle manual trigger
+              if (context.eventName === 'workflow_dispatch') {
+                const message = {
+                  blocks: [
+                    {
+                      type: "header",
+                      text: {
+                        type: "plain_text",
+                        text: "🔍 Branch Protection Test Notification"
+                      }
+                    },
+                    {
+                      type: "section",
+                      text: {
+                        type: "mrkdwn",
+                        text: "This is a test notification from the Branch Protection Slack Notifier workflow."
+                      }
+                    },
+                    {
+                      type: "context",
+                      elements: [
+                        {
+                          type: "mrkdwn",
+                          text: `Time: ${new Date().toISOString()}`
+                        }
+                      ]
+                    }
+                  ]
+                };
+                
+                console.log('Sending test message to Slack:', JSON.stringify(message, null, 2));
+                await github.request({
+                  method: 'POST',
+                  url: process.env.SECURITY_SECURITY_SLACK_WEBHOOK_URL,
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  data: message
+                });
+                console.log('Test notification sent successfully');
+                return;
+              }
+              
+              // Handle branch protection rule changes
+              if (context.eventName === 'branch_protection_rule') {
+                console.log('Processing branch protection rule event');
+                console.log('Action:', event.action);
+                console.log('Rule:', JSON.stringify(event.rule, null, 2));
+                
+                const rule = event.rule;
+                const repository = event.repository;
+                const sender = event.sender;
+                
+                const message = {
+                  blocks: [
+                    {
+                      type: "header",
+                      text: {
+                        type: "plain_text",
+                        text: `🚨 Branch Protection Rule ${event.action.toUpperCase()}`
+                      }
+                    },
+                    {
+                      type: "section",
+                      fields: [
+                        {
+                          type: "mrkdwn",
+                          text: `*Repository:*\n${repository.full_name}`
+                        },
+                        {
+                          type: "mrkdwn",
+                          text: `*Changed by:*\n${sender.login}`
+                        }
+                      ]
+                    },
+                    {
+                      type: "section",
+                      fields: [
+                        {
+                          type: "mrkdwn",
+                          text: `*Branch Pattern:*\n${rule.pattern}`
+                        },
+                        {
+                          type: "mrkdwn",
+                          text: `*Action:*\n${event.action}`
+                        }
+                      ]
+                    }
+                  ]
+                };
+                // Add timestamp
+                message.blocks.push({
+                  type: "context",
+                  elements: [
+                    {
+                      type: "mrkdwn",
+                      text: `Time: ${new Date().toISOString()}`
+                    }
+                  ]
+                });
+                console.log('Sending branch protection change message to Slack:', JSON.stringify(message, null, 2));
+                await github.request({
+                  method: 'POST',
+                  url: process.env.SECURITY_SLACK_WEBHOOK_URL,
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  data: message
+                });
+                console.log('Branch protection change notification sent successfully');
+                return;
+              }
+              
+            } catch (error) {
+              console.error('Error sending Slack notification:', error);
+              console.error('Error details:', {
+                status: error.status,
+                message: error.message,
+                documentation_url: error.documentation_url
+              });
+              throw error;
+            }
+        env:
+          SECURITY_SLACK_WEBHOOK_URL: ${{ secrets.SECURITY_SLACK_WEBHOOK_URL }} 
